@@ -170,6 +170,25 @@ def initBank(client, serverid):
             conn.close()
             await interaction.response.send_message(content=f"You have set {user.mention}\'s balance to **{quantity:,}** tokens. They now have **{balance:,}** tokens.", ephemeral=True)
 
+    @tokensgroup.command(name="history", description="View your transaction history!")
+    async def transactionHistory(interaction: discord.Interaction):
+        conn = sqlite3.connect("twilightcasino.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE user = ?", (interaction.user.id,))
+        total_transactions = cursor.fetchone()[0]
+
+        if total_transactions == 0:
+            await interaction.response.send_message("You have no transaction history.", ephemeral=True)
+            return
+
+        page = 1
+        per_page = 5
+        total_pages = (total_transactions + per_page - 1) // per_page
+
+        view = TransactionHistoryView(interaction.user.id, page, total_pages)
+        embed = await view.get_page_embed(page)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
 class DepositAdminView(discord.ui.View):
     def __init__(self, user: int, amount: int, transaction: int):
@@ -242,3 +261,53 @@ class DepositAdminView(discord.ui.View):
             if user:
                 await user.send(f"Your deposit of **{self.amount:,}** tokens has been **denied**.")
             await interaction.response.edit_message(content="Deposit denied.", view=None)
+
+
+class TransactionHistoryView(discord.ui.View):
+    def __init__(self, user_id, current_page, total_pages):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.current_page = current_page
+        self.total_pages = total_pages
+        self.per_page = 5
+
+        if self.total_pages > 1:
+            self.add_item(discord.ui.Button(label="Previous", style=discord.ButtonStyle.primary, disabled=(self.current_page == 1), custom_id=f"prev_{self.user_id}"))
+            self.add_item(discord.ui.Button(label="Next", style=discord.ButtonStyle.primary, disabled=(self.current_page == self.total_pages), custom_id=f"next_{self.user_id}"))
+
+    async def get_page_embed(self, page):
+        conn = sqlite3.connect("twilightcasino.db")
+        cursor = conn.cursor()
+        cursor.execute("""SELECT type, amount, status, datetime FROM transactions WHERE user = ? ORDER BY datetime DESC LIMIT ? OFFSET ?""", (self.user_id, self.per_page, (page - 1) * self.per_page))
+        transactions = cursor.fetchall()
+        conn.close()
+
+        embed = discord.Embed(title=f"Transaction History (Page {page}/{self.total_pages})", color=discord.Color.blurple())
+        if transactions:
+            for type, amount, status, datetime in transactions:
+                embed.add_field(name=f"{type.capitalize()} - {datetime}", value=f"Amount: {amount:,} Tokens\nStatus: {status.capitalize()}", inline=False)
+        else:
+            embed.description = "No transactions found for this page."
+        return embed
+
+    @discord.ui.button(style=discord.ButtonStyle.primary, label="Previous", disabled=True, custom_id="prev")
+    async def previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page > 1:
+            self.current_page -= 1
+            button.disabled = self.current_page == 1
+            embed = await self.get_page_embed(self.current_page)
+            await interaction.response.edit_message(embed=embed, view=self)
+        else:
+            await interaction.response.send_message("You are already on the first page!", ephemeral=True)
+
+
+    @discord.ui.button(style=discord.ButtonStyle.primary, label="Next", disabled=True, custom_id="next")
+    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            button.disabled = self.current_page == self.total_pages
+            embed = await self.get_page_embed(self.current_page)
+            await interaction.response.edit_message(embed=embed, view=self)
+
+        else:
+            await interaction.response.send_message("You are already on the last page!", ephemeral=True)
