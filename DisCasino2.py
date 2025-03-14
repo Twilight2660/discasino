@@ -1,10 +1,11 @@
 import discord
 from discord.ext import commands
 import sqlite3
+from embedhelper import genEmbed
 from sqlite3 import Error
 import centralbank
 import permissions
-import security
+# import security doesnt exist yet
 
 # Database Engine
 def initDatabase():
@@ -92,11 +93,9 @@ class Client(commands.Bot):
             for transaction, user, amount, proof in pending_transactions:
                 view = centralbank.DepositAdminView(user, amount, transaction)
 
-                embed = discord.Embed(title="Deposit Request", color=discord.Color.blurple())
+                embed = genEmbed("Deposit Request", footer="Review this request:")
                 embed.add_field(name="User", value=f"<@{user}>")
                 embed.add_field(name="Amount", value=f"{amount:,} tokens")
-                embed.set_footer(text="Review this request:")
-                embed.set_author(name="Twilight Casino")
                 if proof:
                     embed.set_image(url=proof)
 
