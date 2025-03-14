@@ -5,7 +5,7 @@ from embedhelper import genEmbed
 from sqlite3 import Error
 import centralbank
 import permissions
-import security doesnt exist yet
+import security
 
 # Database Engine
 def initDatabase():
